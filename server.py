@@ -54,4 +54,6 @@ def call_fastgpt():
         return jsonify({"reply": f"[FastGPT 请求失败] {str(e)}\n原始返回：{err_text}"})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
