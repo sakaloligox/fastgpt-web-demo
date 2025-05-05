@@ -1,14 +1,13 @@
-// 开启摄像头和麦克风
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
   .then(stream => {
     document.getElementById("camera").srcObject = stream;
   })
-  .catch(err => alert("获取摄像头失败：" + err));
+  .catch(err => alert("Failed to access camera/microphone: " + err));
 
 function captureAndSend() {
-  const btn = document.getElementById("askBtn");
-  btn.disabled = true;
-  btn.innerText = "识别中...";
+  const button = document.getElementById("askBtn");
+  button.disabled = true;
+  button.innerText = "🎤 Listening...";
 
   const video = document.getElementById("camera");
   const canvas = document.getElementById("snapshot");
@@ -17,20 +16,38 @@ function captureAndSend() {
   canvas.getContext("2d").drawImage(video, 0, 0);
   const imageBase64 = canvas.toDataURL("image/jpeg");
 
+  const lang = document.getElementById("langSelect").value;
   const recognition = new webkitSpeechRecognition();
-  recognition.lang = 'zh-CN';
+  recognition.lang = lang;
+  recognition.interimResults = false;
+  recognition.continuous = false;
+
+  let hasResult = false;
+
   recognition.onresult = async (event) => {
+    hasResult = true;
     const text = event.results[0][0].transcript;
-    document.getElementById("speechText").innerText = "你说的是：" + text;
+    document.getElementById("speechText").innerText = "You said: " + text;
     await sendToFastGPT(imageBase64, text);
-    btn.disabled = false;
-    btn.innerText = "🎤 继续提问";
+    button.disabled = false;
+    button.innerText = "🎤 Ask GPT";
   };
+
   recognition.onerror = () => {
-    btn.disabled = false;
-    btn.innerText = "🎤 再试一次";
+    button.disabled = false;
+    button.innerText = "🎤 Ask GPT";
   };
+
   recognition.start();
+
+  setTimeout(() => {
+    if (!hasResult) {
+      recognition.abort();
+      button.disabled = false;
+      button.innerText = "🎤 Ask GPT";
+      document.getElementById("speechText").innerText = "(No speech detected)";
+    }
+  }, 5000); // stop if no speech in 5 seconds
 }
 
 async function sendToFastGPT(imageBase64, text) {
@@ -44,18 +61,13 @@ async function sendToFastGPT(imageBase64, text) {
   const reply = result.reply;
   document.getElementById("result").innerText = reply;
 
-  // 文本语音播报
   const utterance = new SpeechSynthesisUtterance(reply);
-
-  // 简单语言判断（可根据需求扩展）
-  if (/[\u3040-\u30ff\u31f0-\u31ff]/.test(reply)) {
-    utterance.lang = "ja-JP";  // 日文
-  } else if (/[a-zA-Z]/.test(reply) && !/[\u4e00-\u9fff]/.test(reply)) {
-    utterance.lang = "en-US";  // 英文
-  } else {
-    utterance.lang = "zh-CN";  // 默认中文
-  }
-
+  utterance.lang = detectLanguage(reply);
   speechSynthesis.speak(utterance);
+}
 
+function detectLanguage(text) {
+  if (/[ぁ-んァ-ン一-龯]/.test(text)) return "ja-JP";
+  if (/[a-zA-Z]/.test(text)) return "en-US";
+  return "zh-CN";
 }

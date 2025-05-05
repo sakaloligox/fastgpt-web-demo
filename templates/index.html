@@ -2,20 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>GPT Multimodal Interaction</title>
+  <title>FastGPT Multimodal Interaction</title>
 </head>
 <body>
-  <h2>Camera Feed</h2>
+  <h2>Camera View</h2>
   <video id="camera" autoplay playsinline width="300"></video>
   <canvas id="snapshot" style="display:none;"></canvas>
 
-  <h2>Speech Recognition</h2>
+  <h2>Speech Recognition Text</h2>
   <p id="speechText" style="color:blue; font-weight:bold;"></p>
 
-  <h2>Click the Button to Ask</h2>
+  <h2>Select Language & Ask</h2>
+  <select id="langSelect">
+    <option value="ja-JP">日本語</option>
+    <option value="en-US">English</option>
+    <option value="zh-CN">中文</option>
+    
+  </select>
+
+  <br><br>
   <button id="askBtn" onclick="captureAndSend()">🎤 Ask GPT</button>
 
-  <h2>GPT Response</h2>
+  <h2>FastGPT Reply</h2>
   <div id="result" style="margin-top:20px; font-size:18px;"></div>
 
   <script src="/static/script.js"></script>
