@@ -54,7 +54,7 @@ async function sendToFastGPT(imageBase64, text) {
   const response = await fetch("/api", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: imageBase64, question: text })
+    body: JSON.stringify({ image: imageBase64, text: text })
   });
 
   const result = await response.json();
