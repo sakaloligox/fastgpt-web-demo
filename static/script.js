@@ -67,7 +67,12 @@ async function sendToFastGPT(imageBase64, text) {
 }
 
 function detectLanguage(text) {
-  if (/[ぁ-んァ-ン一-龯]/.test(text)) return "ja-JP";
-  if (/[a-zA-Z]/.test(text)) return "en-US";
-  return "zh-CN";
+  if (/[\u3040-\u30ff]/.test(text)) {
+    return 'ja-JP'; // 日语平假名和片假名
+  } else if (/[\u4e00-\u9fff]/.test(text)) {
+    return 'zh-CN'; // 中文汉字
+  } else {
+    return 'en-US'; // 英文默认
+  }
 }
+
