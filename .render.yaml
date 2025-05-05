@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: fastgpt-web-demo
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: FASTGPT_URL
+        sync: false
+      - key: FASTGPT_API_KEY
+        sync: false  # 🔐 Render 控制台中手动填写（不会暴露在代码中）

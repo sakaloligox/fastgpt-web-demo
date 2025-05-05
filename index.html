@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>FastGPT 多模态网页</title>
+</head>
+<body>
+  <h2>摄像头画面</h2>
+  <video id="camera" autoplay playsinline width="300"></video>
+  <canvas id="snapshot" style="display:none;"></canvas>
+
+  <h2>语音识别文本</h2>
+  <p id="speechText" style="color:blue; font-weight:bold;"></p>
+
+  <h2>点击按钮开始提问</h2>
+  <button onclick="captureAndSend()">提问 FastGPT</button>
+
+  <h2>FastGPT 回复</h2>
+  <div id="result" style="margin-top:20px; font-size:18px;"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
