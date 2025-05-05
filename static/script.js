@@ -24,10 +24,10 @@ function captureAndSend() {
 }
 
 async function sendToFastGPT(imageBase64, text) {
-  const response = await fetch("http://localhost:5000/api", {
+  const response = await fetch("/api", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: imageBase64, question: text })
+    body: JSON.stringify({ image: imageBase64, text: text })
   });
 
   const result = await response.json();
