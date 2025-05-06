@@ -1,99 +1,87 @@
 # FastGPT Web Demo
 
-A simple web interface for interacting with a multimodal FastGPT agent using real-time **camera image** and **microphone audio** from your mobile device.
+This is a multimodal web demo that allows users to interact with a large language model (LLM) via image and voice input. It leverages the [FastGPT](https://github.com/labring/FastGPT) platform for knowledge base construction and API access, and is deployed to the public internet via Render.
 
-![screenshot](screenshot.png)
+## 🔧 Project Overview
 
----
+- 💬 **LLM Backend:** Built with FastGPT, supporting knowledge base Q&A and multimodal inputs (text + image).
+- 🌐 **Frontend:** A lightweight HTML/JavaScript interface developed in VS Code, featuring:
+  - Real-time webcam capture (defaults to rear camera on mobile)
+  - Voice input (speech recognition with language selection)
+  - Image preview before sending
+  - Speech synthesis playback of the model's response
+- ☁️ **Deployment:** Publicly accessible via [Render](https://render.com/), making the application easy to use from any device.
 
-## 🚀 Features
+## 📦 Project Structure
 
-- 📸 Capture camera image (one frame)
-- 🎙️ Record microphone audio and transcribe to text (Web Speech API)
-- 🤖 Send both image and question text to FastGPT API
-- 💬 Display response in real time
-
----
-
-## 🧠 Requirements
-
-- Python 3.8+
-- Node.js (for local static server, optional)
-- A [FastGPT](https://fastgpt.in/) API endpoint and key
-
----
-
-## 🛠️ Installation
-
-1. **Clone the repository**
-
-```bash
-git clone https://github.com/sakaloligox/fastgpt-web-demo.git
-cd fastgpt-web-demo
+```
+fastgpt-web-demo/
+├── templates/
+│   └── index.html        # Main HTML UI
+├── static/
+│   └── script.js         # Frontend logic (camera, speech, fetch)
+├── .env                  # Environment variables for API key and URL
+├── .render.yaml          # Render deployment configuration
+├── server.py             # Flask backend handling API proxy
+└── README.md             # Project description (this file)
 ```
 
-2. **Create `.env` file**
+## 🧪 Local Development
 
-Create a file named `.env` in the root directory and fill in your FastGPT credentials:
+1. **Install dependencies**:
+   ```bash
+   pip install flask flask-cors python-dotenv requests
+   ```
 
-```env
-FASTGPT_URL=https://api.fastgpt.in/api/v1/chat/completions
-FASTGPT_API_KEY=your-api-key-here
-```
+2. **Set up environment variables**:
+   Create a `.env` file:
+   ```
+   FASTGPT_API_KEY=your-fastgpt-api-key
+   FASTGPT_URL=https://api.fastgpt.in/api/v1/chat/completions
+   ```
 
-> ⚠️ Never commit `.env` to public GitHub!
+3. **Start the server**:
+   ```bash
+   python server.py
+   ```
 
-3. **Install Python dependencies**
+4. **Access via browser**:
+   ```
+   http://localhost:5000
+   ```
 
-```bash
-pip install -r requirements.txt
-```
+## 🌍 Deployment via Render
 
----
+1. Push your code to GitHub.
+2. Create a **Web Service** on [Render](https://render.com/).
+3. Set `Start Command` to:
+   ```bash
+   python server.py
+   ```
+4. Add environment variables (`FASTGPT_API_KEY`, `FASTGPT_URL`) via the Render dashboard.
 
-## ▶️ Running Locally
+> ⚠️ Do **not** hardcode your API key into the source code. Use environment variables for security.
 
-1. **Start Flask backend server**
+## ✨ Features
 
-```bash
-python server.py
-```
+- 📷 Image capture via webcam (auto rear-facing on mobile)
+- 🎙️ Speech recognition in Chinese, English, or Japanese
+- 🖼️ Image preview before sending to GPT
+- 🧠 Multimodal GPT response with knowledge base integration
+- 🔊 Spoken feedback of GPT's response (auto language detection)
+- 🔁 Toggle buttons for voice input and speech playback
 
-> This starts the API on `http://localhost:5000`
+## 📌 TODO / Ideas
 
-2. **Serve frontend locally**
-
-```bash
-python -m http.server 8000
-```
-
-Visit: [http://localhost:8000](http://localhost:8000)
-
----
-
-## ☁️ Deploy to Render
-
-This project is ready to deploy via [Render](https://render.com). The deployment configuration is specified in `.render.yaml`.
-
-Steps:
-
-1. Push this repo to GitHub
-2. Create a new Web Service on Render
-3. Add the environment variables:
-   - `FASTGPT_URL`
-   - `FASTGPT_API_KEY`
-4. Click **Deploy**
-
----
-
-## 🛡️ Security
-
-- `.env` is excluded from Git using `.gitignore`
-- `.render.yaml` does **not** include secrets (uses `sync: false`)
-- Frontend never sees your API key
-
----
+- Add file upload support
+- Add GPT function calling or tool support
+- Display conversation history
+- Dark mode UI
 
 ## 📄 License
 
-[MIT License](LICENSE)
+MIT License
+
+---
+
+**Made with ❤️ using FastGPT + Flask + Render**
