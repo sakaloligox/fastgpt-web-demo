@@ -3,7 +3,9 @@ import requests
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
+import base64
 
+# 加载环境变量
 load_dotenv()
 
 app = Flask(__name__)
@@ -14,7 +16,7 @@ FASTGPT_API_KEY = os.getenv("FASTGPT_API_KEY")
 
 @app.route("/")
 def index():
-    return render_template("index.html")  # 👈 模板文件必须放在 templates/index.html
+    return render_template("index.html")  # 模板文件应放在 templates/index.html
 
 @app.route("/api", methods=["POST"])
 def call_fastgpt():
@@ -22,12 +24,18 @@ def call_fastgpt():
     image_base64 = data.get("image", "")
     text = data.get("text", "")
 
+    # 🚨 将图像嵌入到 messages.content 的 image_url 中，标准格式如下
     payload = {
-        "model": "gpt-4",
+        "model": "gpt-4-vision-preview",  # 🚨 确保你平台支持此模型
         "messages": [
-            {"role": "user", "content": text}
+            {
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": text },
+                    { "type": "image_url", "image_url": { "url": image_base64 } }
+                ]
+            }
         ],
-        "images": [image_base64],
         "stream": False
     }
 
@@ -56,4 +64,3 @@ def call_fastgpt():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-

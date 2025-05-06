@@ -1,3 +1,8 @@
+let recognition = null;
+let isListening = false;
+let isSpeaking = false;
+let synthUtterance = null;
+
 // ✅ 优先使用后置摄像头（若失败则自动使用前置）
 navigator.mediaDevices.getUserMedia({
   video: { facingMode: { exact: "environment" } },
@@ -20,10 +25,22 @@ navigator.mediaDevices.getUserMedia({
 })
 .catch(err => alert("Failed to access camera/microphone: " + err));
 
-function captureAndSend() {
+// ✅ 控制按钮行为
+document.getElementById("askBtn").addEventListener("click", () => {
+  if (isListening) {
+    stopListening();
+  } else if (isSpeaking) {
+    stopSpeaking();
+  } else {
+    startListening();
+  }
+});
+
+function startListening() {
   const button = document.getElementById("askBtn");
-  button.disabled = true;
-  button.innerText = "🎤 Listening...";
+  isListening = true;
+  button.disabled = false;
+  button.innerText = "⏹️ Stop Listening";
 
   const video = document.getElementById("camera");
   const canvas = document.getElementById("snapshot");
@@ -32,8 +49,11 @@ function captureAndSend() {
   canvas.getContext("2d").drawImage(video, 0, 0);
   const imageBase64 = canvas.toDataURL("image/jpeg");
 
+  // ✅ 图像预览
+  document.getElementById("preview").src = imageBase64;
+
   const lang = document.getElementById("langSelect").value;
-  const recognition = new webkitSpeechRecognition();
+  recognition = new webkitSpeechRecognition();
   recognition.lang = lang;
   recognition.interimResults = false;
   recognition.continuous = false;
@@ -44,26 +64,47 @@ function captureAndSend() {
     hasResult = true;
     const text = event.results[0][0].transcript;
     document.getElementById("speechText").innerText = "You said: " + text;
+    isListening = false;
+    button.innerText = "⏳ Waiting...";
     await sendToFastGPT(imageBase64, text);
-    button.disabled = false;
-    button.innerText = "🎤 Ask GPT";
   };
 
   recognition.onerror = () => {
-    button.disabled = false;
+    isListening = false;
     button.innerText = "🎤 Ask GPT";
+  };
+
+  recognition.onend = () => {
+    if (!hasResult) {
+      button.innerText = "🎤 Ask GPT";
+      document.getElementById("speechText").innerText = "(No speech detected)";
+    }
+    isListening = false;
   };
 
   recognition.start();
 
   setTimeout(() => {
-    if (!hasResult) {
-      recognition.abort();
-      button.disabled = false;
-      button.innerText = "🎤 Ask GPT";
+    if (!hasResult && isListening) {
+      stopListening();
       document.getElementById("speechText").innerText = "(No speech detected)";
     }
-  }, 5000); // stop if no speech in 5 seconds
+  }, 5000);
+}
+
+function stopListening() {
+  if (recognition) {
+    recognition.abort();
+    recognition = null;
+  }
+  isListening = false;
+  document.getElementById("askBtn").innerText = "🎤 Ask GPT";
+}
+
+function stopSpeaking() {
+  speechSynthesis.cancel();
+  isSpeaking = false;
+  document.getElementById("askBtn").innerText = "🎤 Ask GPT";
 }
 
 async function sendToFastGPT(imageBase64, text) {
@@ -77,17 +118,25 @@ async function sendToFastGPT(imageBase64, text) {
   const reply = result.reply;
   document.getElementById("result").innerText = reply;
 
-  const utterance = new SpeechSynthesisUtterance(reply);
-  utterance.lang = detectLanguage(reply);
-  speechSynthesis.speak(utterance);
+  const button = document.getElementById("askBtn");
+  button.innerText = "🔊 Speaking...";
+  isSpeaking = true;
+
+  synthUtterance = new SpeechSynthesisUtterance(reply);
+  synthUtterance.lang = detectLanguage(reply);
+  synthUtterance.onend = () => {
+    isSpeaking = false;
+    button.innerText = "🎤 Ask GPT";
+  };
+  speechSynthesis.speak(synthUtterance);
 }
 
 function detectLanguage(text) {
   if (/[\u3040-\u30ff]/.test(text)) {
-    return 'ja-JP'; // Japanese
+    return 'ja-JP';
   } else if (/[\u4e00-\u9fff]/.test(text)) {
-    return 'zh-CN'; // Chinese
+    return 'zh-CN';
   } else {
-    return 'en-US'; // English
+    return 'en-US';
   }
 }

@@ -9,19 +9,22 @@
   <video id="camera" autoplay playsinline width="300"></video>
   <canvas id="snapshot" style="display:none;"></canvas>
 
+  <h2>Image Preview</h2>
+  <!-- ✅ 图像预览 -->
+  <img id="preview" src="" width="300" style="border:1px solid #ccc; margin-bottom: 10px;" />
+
   <h2>Speech Recognition Text</h2>
   <p id="speechText" style="color:blue; font-weight:bold;"></p>
 
   <h2>Select Language & Ask</h2>
   <select id="langSelect">
     <option value="ja-JP">日本語</option>
-    <option value="en-US">English</option>
+    <option value="en-US" selected>English</option>
     <option value="zh-CN">中文</option>
-    
   </select>
 
   <br><br>
-  <button id="askBtn" onclick="captureAndSend()">🎤 Ask GPT</button>
+  <button id="askBtn">🎤 Ask GPT</button>
 
   <h2>GPT Reply</h2>
   <div id="result" style="margin-top:20px; font-size:18px;"></div>
