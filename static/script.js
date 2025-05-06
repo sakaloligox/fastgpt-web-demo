@@ -1,8 +1,24 @@
-navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-  .then(stream => {
+// ✅ 优先使用后置摄像头（若失败则自动使用前置）
+navigator.mediaDevices.getUserMedia({
+  video: { facingMode: { exact: "environment" } },
+  audio: true
+})
+.then(stream => {
+  document.getElementById("camera").srcObject = stream;
+})
+.catch(err => {
+  console.warn("Back camera not found, fallback to front camera.", err);
+  return navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "user" },
+    audio: true
+  });
+})
+.then(stream => {
+  if (stream) {
     document.getElementById("camera").srcObject = stream;
-  })
-  .catch(err => alert("Failed to access camera/microphone: " + err));
+  }
+})
+.catch(err => alert("Failed to access camera/microphone: " + err));
 
 function captureAndSend() {
   const button = document.getElementById("askBtn");
@@ -68,11 +84,10 @@ async function sendToFastGPT(imageBase64, text) {
 
 function detectLanguage(text) {
   if (/[\u3040-\u30ff]/.test(text)) {
-    return 'ja-JP'; // 日语平假名和片假名
+    return 'ja-JP'; // Japanese
   } else if (/[\u4e00-\u9fff]/.test(text)) {
-    return 'zh-CN'; // 中文汉字
+    return 'zh-CN'; // Chinese
   } else {
-    return 'en-US'; // 英文默认
+    return 'en-US'; // English
   }
 }
-
