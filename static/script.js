@@ -2,15 +2,14 @@ let recognition = null;
 let isListening = false;
 let isSpeaking = false;
 let synthUtterance = null;
-let chatHistory = []; // 🧠 上下文缓存
+let chatHistory = [];
 let voiceUnlocked = false;
 
 let chatId = localStorage.getItem("chatId");
 if (!chatId) {
-  chatId = crypto.randomUUID();  // ✅ 生成 UUID
-  localStorage.setItem("chatId", chatId);  // 保存在本地直到关闭标签页
+  chatId = crypto.randomUUID();
+  localStorage.setItem("chatId", chatId);
 }
-
 
 const camera = document.getElementById("camera");
 const askBtn = document.getElementById("askBtn");
@@ -19,8 +18,13 @@ const resultText = document.getElementById("result");
 const langSelect = document.getElementById("langSelect");
 const canvas = document.getElementById("snapshot");
 
+// 🧠 强制激活扬声器（防止 iOS 走听筒）
+const audioTest = document.createElement("audio");
+audioTest.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=";
+audioTest.play().catch(() => {});
 
-// 摄像头与麦克风权限
+let currentImageBase64 = "";
+
 navigator.mediaDevices.getUserMedia({
   video: { facingMode: { exact: "environment" } },
   audio: {
@@ -50,11 +54,8 @@ askBtn.addEventListener("touchstart", e => { e.preventDefault(); handleButtonPre
 askBtn.addEventListener("touchend", handleButtonRelease);
 
 function handleButtonPress() {
-  // ✅ iOS 语音播报权限解锁（只做一次）
   if (!voiceUnlocked) {
-    if (speechSynthesis.paused) {
-      speechSynthesis.resume();
-    }
+    if (speechSynthesis.paused) speechSynthesis.resume();
     const testVoice = new SpeechSynthesisUtterance('');
     speechSynthesis.speak(testVoice);
     voiceUnlocked = true;
@@ -68,8 +69,8 @@ function handleButtonPress() {
 }
 
 function handleButtonRelease() {
-  if (isListening) {
-    stopListening();
+  if (isListening && recognition) {
+    recognition.stop(); // 手动结束识别
   }
 }
 
@@ -82,7 +83,7 @@ function startListening() {
   canvas.width = 160;
   canvas.height = 120;
   canvas.getContext("2d").drawImage(camera, 0, 0, 160, 120);
-  const imageBase64 = canvas.toDataURL("image/jpeg", 0.6);
+  currentImageBase64 = canvas.toDataURL("image/jpeg", 0.6);
 
   recognition = new webkitSpeechRecognition();
   recognition.lang = langSelect.value;
@@ -90,34 +91,36 @@ function startListening() {
   recognition.continuous = false;
 
   recognition.onresult = async (event) => {
-    const text = event.results[0][0].transcript;
-    speechText.innerText = "You said: " + text;
-    isListening = false;
-    askBtn.classList.add("loading");
-    await sendToFastGPT(imageBase64, text);
+    const result = event.results[event.resultIndex];
+    if (result && result[0]) {
+      const rawText = result[0].transcript.trim();
+      const cleanText = removeRepeatingPhrases(rawText);
+      if (!cleanText) {
+        speechText.innerText = "(No speech detected)";
+        stopListening();
+        return;
+      }
+
+      speechText.innerText = "You said: " + cleanText;
+      askBtn.classList.add("loading");
+      stopListening();
+      await sendToFastGPT(currentImageBase64, cleanText);
+    }
   };
 
   recognition.onerror = () => {
-    stopListening();
     speechText.innerText = "(Speech error)";
+    stopListening();
   };
 
   recognition.onend = () => {
-    if (isListening) {
-      stopListening();
-      speechText.innerText = "(No speech detected)";
-    }
+    // 👈 关键：确保 stopListening 被执行
+    stopListening();
   };
 
   recognition.start();
-  setTimeout(() => {
-    if (isListening) {
-      recognition.abort();
-      stopListening();
-      speechText.innerText = "(Timeout: No speech)";
-    }
-  }, 5000);
 }
+
 
 function stopListening() {
   if (recognition) {
@@ -135,8 +138,18 @@ function stopSpeaking() {
   startListening();
 }
 
+function removeRepeatingPhrases(text) {
+  const words = text.split(/[\s，。！？、,.!?]/).filter(Boolean);
+  const deduped = [];
+  for (let i = 0; i < words.length; i++) {
+    if (i === 0 || words[i] !== words[i - 1]) {
+      deduped.push(words[i]);
+    }
+  }
+  return deduped.join(" ");
+}
+
 async function sendToFastGPT(imageBase64, text) {
-  // ✅ 构建当前提问（不加入历史）
   const currentMessage = [{
     role: "user",
     content: [
@@ -145,11 +158,15 @@ async function sendToFastGPT(imageBase64, text) {
     ]
   }];
 
+  // ✅ 设置按钮状态为加载中
+  askBtn.innerText = "⌛ Waiting...";
+  askBtn.classList.add("loading");
+
   const response = await fetch("/api", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      messages: currentMessage,  // ✅ 只发送当前消息
+      messages: currentMessage,
       chatId: chatId
     })
   });
@@ -157,16 +174,11 @@ async function sendToFastGPT(imageBase64, text) {
   const result = await response.json();
   const reply = result.reply;
   chatId = result.chatId || chatId;
-
   resultText.innerText = reply;
 
-  // ✅ 仍然保存到 chatHistory，用于界面展示或未来切换功能
   chatHistory.push({
     role: "user",
-    content: [
-      { type: "text", text: text },
-      { type: "image_url", image_url: { url: imageBase64 } }
-    ]
+    content: currentMessage[0].content
   });
 
   chatHistory.push({
@@ -177,8 +189,12 @@ async function sendToFastGPT(imageBase64, text) {
   isSpeaking = true;
   askBtn.classList.remove("loading");
   askBtn.innerText = "🔊 Speaking...";
+
   synthUtterance = new SpeechSynthesisUtterance(reply);
   synthUtterance.lang = detectLanguage(reply);
+  synthUtterance.volume = 1;
+  synthUtterance.rate = 1;
+  synthUtterance.pitch = 1;
   synthUtterance.onend = () => {
     isSpeaking = false;
     askBtn.innerText = "🎤 Hold to Speak";
@@ -186,9 +202,12 @@ async function sendToFastGPT(imageBase64, text) {
   speechSynthesis.speak(synthUtterance);
 }
 
+
 function detectLanguage(text) {
-  if (/[぀-ヿ]/.test(text)) return 'ja-JP';
-  if (/[一-鿿]/.test(text)) return 'zh-CN';
+  const hasJapanese = /[\u3040-\u30ff\u31f0-\u31ff\uFF66-\uFF9F]/.test(text);
+  const hasChinese = /[\u4e00-\u9fff]/.test(text);
+  if (hasJapanese) return 'ja-JP';
+  if (hasChinese) return 'zh-CN';
   return 'en-US';
 }
 
@@ -196,12 +215,9 @@ function startNewChat() {
   chatHistory = [];
   resultText.innerText = '';
   speechText.innerText = '';
-
-  // ❗️生成新的 chatId 并保存（使其成为新的对话线程）
   chatId = crypto.randomUUID();
   localStorage.setItem("chatId", chatId);
 }
-
 
 // iOS语音解锁
 function unlockVoicePlayback() {
