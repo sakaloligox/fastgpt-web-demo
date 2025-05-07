@@ -9,7 +9,9 @@ navigator.mediaDevices.getUserMedia({
   audio: true
 })
 .then(stream => {
-  document.getElementById("camera").srcObject = stream;
+  const video = document.getElementById("camera");
+  video.srcObject = stream;
+  video.muted = true; // ✅ 关键：静音避免回音
 })
 .catch(err => {
   console.warn("Back camera not found, fallback to front camera.", err);
@@ -20,7 +22,9 @@ navigator.mediaDevices.getUserMedia({
 })
 .then(stream => {
   if (stream) {
-    document.getElementById("camera").srcObject = stream;
+    const video = document.getElementById("camera");
+    video.srcObject = stream;
+    video.muted = true; // ✅ 再次确保静音
   }
 })
 .catch(err => alert("Failed to access camera/microphone: " + err));
@@ -49,7 +53,7 @@ function startListening() {
   canvas.getContext("2d").drawImage(video, 0, 0);
   const imageBase64 = canvas.toDataURL("image/jpeg");
 
-  // ✅ 图像预览
+  // ✅ 显示图像预览
   document.getElementById("preview").src = imageBase64;
 
   const lang = document.getElementById("langSelect").value;
@@ -133,10 +137,10 @@ async function sendToFastGPT(imageBase64, text) {
 
 function detectLanguage(text) {
   if (/[\u3040-\u30ff]/.test(text)) {
-    return 'ja-JP';
+    return 'ja-JP'; // Japanese
   } else if (/[\u4e00-\u9fff]/.test(text)) {
-    return 'zh-CN';
+    return 'zh-CN'; // Chinese
   } else {
-    return 'en-US';
+    return 'en-US'; // English
   }
 }
