@@ -169,3 +169,13 @@ style.innerHTML = `
   }
 `;
 document.head.appendChild(style);
+
+// ✅ 解锁 iOS Safari 的语音播放权限（必须由用户交互触发）
+function unlockVoicePlayback() {
+  const utter = new SpeechSynthesisUtterance('');
+  window.speechSynthesis.speak(utter);
+  document.removeEventListener("touchstart", unlockVoicePlayback);
+  document.removeEventListener("click", unlockVoicePlayback);
+}
+document.addEventListener("touchstart", unlockVoicePlayback);
+document.addEventListener("click", unlockVoicePlayback);
