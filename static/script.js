@@ -21,8 +21,9 @@ navigator.mediaDevices.getUserMedia({
   }
 })
 .then(stream => {
-  camera.srcObject = stream;
-  camera.muted = true;
+  const video = document.getElementById("camera");
+  video.srcObject = stream;
+  video.muted = true;
 })
 .catch(() => {
   return navigator.mediaDevices.getUserMedia({
@@ -61,10 +62,15 @@ function startListening() {
   resultText.innerText = "";
 
   // ✅ 截取图像
-  canvas.width = camera.videoWidth;
-  canvas.height = camera.videoHeight;
-  canvas.getContext("2d").drawImage(camera, 0, 0);
-  const imageBase64 = canvas.toDataURL("image/jpeg");
+  // canvas.width = camera.videoWidth;
+  // canvas.height = camera.videoHeight;
+  // canvas.getContext("2d").drawImage(camera, 0, 0);
+  // const imageBase64 = canvas.toDataURL("image/jpeg");
+
+  canvas.width = 160;
+  canvas.height = 120;
+  canvas.getContext("2d").drawImage(camera, 0, 0, 160, 120);
+  const imageBase64 = canvas.toDataURL("image/jpeg", 0.6); // 可选：压缩质量为60%
 
   recognition = new webkitSpeechRecognition();
   recognition.lang = langSelect.value;
