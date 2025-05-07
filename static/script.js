@@ -1,8 +1,9 @@
-// ✅ script.js
 let recognition = null;
 let isListening = false;
 let isSpeaking = false;
 let synthUtterance = null;
+let chatHistory = []; // 🧠 上下文缓存
+let chatId = null;  // 🔑 全局唯一对话线程 ID
 
 const camera = document.getElementById("camera");
 const askBtn = document.getElementById("askBtn");
@@ -11,7 +12,8 @@ const resultText = document.getElementById("result");
 const langSelect = document.getElementById("langSelect");
 const canvas = document.getElementById("snapshot");
 
-// ✅ 优先后置摄像头
+
+// 摄像头与麦克风权限
 navigator.mediaDevices.getUserMedia({
   video: { facingMode: { exact: "environment" } },
   audio: {
@@ -21,9 +23,8 @@ navigator.mediaDevices.getUserMedia({
   }
 })
 .then(stream => {
-  const video = document.getElementById("camera");
-  video.srcObject = stream;
-  video.muted = true;
+  camera.srcObject = stream;
+  camera.muted = true;
 })
 .catch(() => {
   return navigator.mediaDevices.getUserMedia({
@@ -61,16 +62,10 @@ function startListening() {
   speechText.innerText = "";
   resultText.innerText = "";
 
-  // ✅ 截取图像
-  // canvas.width = camera.videoWidth;
-  // canvas.height = camera.videoHeight;
-  // canvas.getContext("2d").drawImage(camera, 0, 0);
-  // const imageBase64 = canvas.toDataURL("image/jpeg");
-
   canvas.width = 160;
   canvas.height = 120;
   canvas.getContext("2d").drawImage(camera, 0, 0, 160, 120);
-  const imageBase64 = canvas.toDataURL("image/jpeg", 0.6); // 可选：压缩质量为60%
+  const imageBase64 = canvas.toDataURL("image/jpeg", 0.6);
 
   recognition = new webkitSpeechRecognition();
   recognition.lang = langSelect.value;
@@ -81,7 +76,7 @@ function startListening() {
     const text = event.results[0][0].transcript;
     speechText.innerText = "You said: " + text;
     isListening = false;
-    askBtn.innerHTML = `<div class='loader'></div>`; // ✅ 显示加载动画
+    askBtn.classList.add("loading");
     await sendToFastGPT(imageBase64, text);
   };
 
@@ -124,17 +119,43 @@ function stopSpeaking() {
 }
 
 async function sendToFastGPT(imageBase64, text) {
+  // 构建对话历史消息数组
+  chatHistory.push({
+    role: "user",
+    content: [
+      { type: "text", text: text },
+      { type: "image_url", image_url: { url: imageBase64 } }
+    ]
+  });
+
   const response = await fetch("/api", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: imageBase64, text: text })
+    body: JSON.stringify({
+      messages: chatHistory,
+      chatId: chatId  // ✅ 符合 FastGPT 文档要求
+    })
   });
 
   const result = await response.json();
   const reply = result.reply;
+  chatId = result.chatId || chatId;  // ✅ 存下 chatId
+
   resultText.innerText = reply;
 
+  // 保存回复到上下文
+  chatHistory.push({
+    role: "assistant",
+    content: [{ type: "text", text: reply }]
+  });
+
+  // 设置 chatId（首次获取）
+  if (result.chatId) {
+    chatId = result.chatId;
+  }
+
   isSpeaking = true;
+  askBtn.classList.remove("loading");
   askBtn.innerText = "🔊 Speaking...";
   synthUtterance = new SpeechSynthesisUtterance(reply);
   synthUtterance.lang = detectLanguage(reply);
@@ -143,6 +164,7 @@ async function sendToFastGPT(imageBase64, text) {
     askBtn.innerText = "🎤 Hold to Speak";
   };
   speechSynthesis.speak(synthUtterance);
+
 }
 
 function detectLanguage(text) {
@@ -151,26 +173,7 @@ function detectLanguage(text) {
   return 'en-US';
 }
 
-// ✅ 添加加载动画样式
-const style = document.createElement("style");
-style.innerHTML = `
-  .loader {
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #007bff;
-    border-radius: 50%;
-    width: 24px;
-    height: 24px;
-    animation: spin 1s linear infinite;
-    display: inline-block;
-  }
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-`;
-document.head.appendChild(style);
-
-// ✅ 解锁 iOS Safari 的语音播放权限（必须由用户交互触发）
+// iOS语音解锁
 function unlockVoicePlayback() {
   const utter = new SpeechSynthesisUtterance('');
   window.speechSynthesis.speak(utter);

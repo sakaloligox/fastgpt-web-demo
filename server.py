@@ -3,9 +3,7 @@ import requests
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
-import base64
 
-# 加载环境变量
 load_dotenv()
 
 app = Flask(__name__)
@@ -16,26 +14,19 @@ FASTGPT_API_KEY = os.getenv("FASTGPT_API_KEY")
 
 @app.route("/")
 def index():
-    return render_template("index.html")  # 模板文件应放在 templates/index.html
+    return render_template("index.html")
 
 @app.route("/api", methods=["POST"])
+
 def call_fastgpt():
     data = request.get_json()
-    image_base64 = data.get("image", "")
-    text = data.get("text", "")
+    messages = data.get("messages", [])
+    chat_id = data.get("chatId")  # ✅ 注意名称为 chatId（不是 thread_id）
 
-    # 🚨 将图像嵌入到 messages.content 的 image_url 中，标准格式如下
     payload = {
-        "model": "gpt-4-vision-preview",  # 🚨 确保你平台支持此模型
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    { "type": "text", "text": text },
-                    { "type": "image_url", "image_url": { "url": image_base64 } }
-                ]
-            }
-        ],
+        "model": "gpt-4-vision-preview",
+        "chatId": chat_id,  # ✅ FastGPT 官方接口参数
+        "messages": messages,
         "stream": False
     }
 
@@ -46,20 +37,18 @@ def call_fastgpt():
 
     try:
         response = requests.post(FASTGPT_URL, json=payload, headers=headers, timeout=30)
-        print("FastGPT 返回原始内容：")
-        print(response.text)
-
         result = response.json()
-        reply_text = result.get("choices", [{}])[0].get("message", {}).get("content", "[无回复]")
-        return jsonify({"reply": reply_text})
+        reply_text = result.get("choices", [{}])[0].get("message", {}).get("content", "[No reply]")
+        new_chat_id = result.get("chat_id") or chat_id  # ✅ 捕获返回的新 chat_id
+        return jsonify({
+            "reply": reply_text,
+            "chatId": new_chat_id
+        })
 
     except Exception as e:
-        err_text = ""
-        try:
-            err_text = response.text
-        except:
-            pass
-        return jsonify({"reply": f"[FastGPT 请求失败] {str(e)}\n原始返回：{err_text}"})
+        return jsonify({"reply": f"[FastGPT 请求失败] {str(e)}"})
+
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
