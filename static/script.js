@@ -3,7 +3,14 @@ let isListening = false;
 let isSpeaking = false;
 let synthUtterance = null;
 let chatHistory = []; // 🧠 上下文缓存
-let chatId = null;  // 🔑 全局唯一对话线程 ID
+let voiceUnlocked = false;
+
+let chatId = localStorage.getItem("chatId");
+if (!chatId) {
+  chatId = crypto.randomUUID();  // ✅ 生成 UUID
+  localStorage.setItem("chatId", chatId);  // 保存在本地直到关闭标签页
+}
+
 
 const camera = document.getElementById("camera");
 const askBtn = document.getElementById("askBtn");
@@ -43,6 +50,16 @@ askBtn.addEventListener("touchstart", e => { e.preventDefault(); handleButtonPre
 askBtn.addEventListener("touchend", handleButtonRelease);
 
 function handleButtonPress() {
+  // ✅ iOS 语音播报权限解锁（只做一次）
+  if (!voiceUnlocked) {
+    if (speechSynthesis.paused) {
+      speechSynthesis.resume();
+    }
+    const testVoice = new SpeechSynthesisUtterance('');
+    speechSynthesis.speak(testVoice);
+    voiceUnlocked = true;
+  }
+
   if (isSpeaking) {
     stopSpeaking();
   } else if (!isListening) {
@@ -119,7 +136,31 @@ function stopSpeaking() {
 }
 
 async function sendToFastGPT(imageBase64, text) {
-  // 构建对话历史消息数组
+  // ✅ 构建当前提问（不加入历史）
+  const currentMessage = [{
+    role: "user",
+    content: [
+      { type: "text", text: text },
+      { type: "image_url", image_url: { url: imageBase64 } }
+    ]
+  }];
+
+  const response = await fetch("/api", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages: currentMessage,  // ✅ 只发送当前消息
+      chatId: chatId
+    })
+  });
+
+  const result = await response.json();
+  const reply = result.reply;
+  chatId = result.chatId || chatId;
+
+  resultText.innerText = reply;
+
+  // ✅ 仍然保存到 chatHistory，用于界面展示或未来切换功能
   chatHistory.push({
     role: "user",
     content: [
@@ -128,31 +169,10 @@ async function sendToFastGPT(imageBase64, text) {
     ]
   });
 
-  const response = await fetch("/api", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: chatHistory,
-      chatId: chatId  // ✅ 符合 FastGPT 文档要求
-    })
-  });
-
-  const result = await response.json();
-  const reply = result.reply;
-  chatId = result.chatId || chatId;  // ✅ 存下 chatId
-
-  resultText.innerText = reply;
-
-  // 保存回复到上下文
   chatHistory.push({
     role: "assistant",
     content: [{ type: "text", text: reply }]
   });
-
-  // 设置 chatId（首次获取）
-  if (result.chatId) {
-    chatId = result.chatId;
-  }
 
   isSpeaking = true;
   askBtn.classList.remove("loading");
@@ -164,7 +184,6 @@ async function sendToFastGPT(imageBase64, text) {
     askBtn.innerText = "🎤 Hold to Speak";
   };
   speechSynthesis.speak(synthUtterance);
-
 }
 
 function detectLanguage(text) {
@@ -172,6 +191,17 @@ function detectLanguage(text) {
   if (/[一-鿿]/.test(text)) return 'zh-CN';
   return 'en-US';
 }
+
+function startNewChat() {
+  chatHistory = [];
+  resultText.innerText = '';
+  speechText.innerText = '';
+
+  // ❗️生成新的 chatId 并保存（使其成为新的对话线程）
+  chatId = crypto.randomUUID();
+  localStorage.setItem("chatId", chatId);
+}
+
 
 // iOS语音解锁
 function unlockVoicePlayback() {

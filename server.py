@@ -21,7 +21,8 @@ def index():
 def call_fastgpt():
     data = request.get_json()
     messages = data.get("messages", [])
-    chat_id = data.get("chatId")  # ✅ 注意名称为 chatId（不是 thread_id）
+    chat_id = data.get("chatId")  # ✅ 注意名称为 chatId
+
 
     payload = {
         "model": "gpt-4-vision-preview",
@@ -39,10 +40,9 @@ def call_fastgpt():
         response = requests.post(FASTGPT_URL, json=payload, headers=headers, timeout=30)
         result = response.json()
         reply_text = result.get("choices", [{}])[0].get("message", {}).get("content", "[No reply]")
-        new_chat_id = result.get("chat_id") or chat_id  # ✅ 捕获返回的新 chat_id
         return jsonify({
             "reply": reply_text,
-            "chatId": new_chat_id
+            "chatId": chat_id
         })
 
     except Exception as e:
