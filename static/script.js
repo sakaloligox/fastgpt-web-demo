@@ -1,97 +1,102 @@
+// ✅ script.js
 let recognition = null;
 let isListening = false;
 let isSpeaking = false;
 let synthUtterance = null;
 
-// ✅ 优先使用后置摄像头（若失败则自动使用前置）
+const camera = document.getElementById("camera");
+const askBtn = document.getElementById("askBtn");
+const speechText = document.getElementById("speechText");
+const resultText = document.getElementById("result");
+const langSelect = document.getElementById("langSelect");
+const canvas = document.getElementById("snapshot");
+
+// ✅ 优先后置摄像头
 navigator.mediaDevices.getUserMedia({
   video: { facingMode: { exact: "environment" } },
-  audio: true
+  audio: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true
+  }
 })
 .then(stream => {
-  const video = document.getElementById("camera");
-  video.srcObject = stream;
-  video.muted = true; // ✅ 关键：静音避免回音
+  camera.srcObject = stream;
+  camera.muted = true;
 })
-.catch(err => {
-  console.warn("Back camera not found, fallback to front camera.", err);
+.catch(() => {
   return navigator.mediaDevices.getUserMedia({
     video: { facingMode: "user" },
     audio: true
   });
 })
 .then(stream => {
-  if (stream) {
-    const video = document.getElementById("camera");
-    video.srcObject = stream;
-    video.muted = true; // ✅ 再次确保静音
-  }
+  if (stream) camera.srcObject = stream;
 })
-.catch(err => alert("Failed to access camera/microphone: " + err));
+.catch(err => alert("Failed to access camera/mic: " + err));
 
-// ✅ 控制按钮行为
-document.getElementById("askBtn").addEventListener("click", () => {
-  if (isListening) {
-    stopListening();
-  } else if (isSpeaking) {
+askBtn.addEventListener("mousedown", handleButtonPress);
+askBtn.addEventListener("mouseup", handleButtonRelease);
+askBtn.addEventListener("touchstart", e => { e.preventDefault(); handleButtonPress(); });
+askBtn.addEventListener("touchend", handleButtonRelease);
+
+function handleButtonPress() {
+  if (isSpeaking) {
     stopSpeaking();
-  } else {
+  } else if (!isListening) {
     startListening();
   }
-});
+}
+
+function handleButtonRelease() {
+  if (isListening) {
+    stopListening();
+  }
+}
 
 function startListening() {
-  const button = document.getElementById("askBtn");
   isListening = true;
-  button.disabled = false;
-  button.innerText = "⏹️ Stop Listening";
+  askBtn.innerText = "⏹️ Listening...";
+  speechText.innerText = "";
+  resultText.innerText = "";
 
-  const video = document.getElementById("camera");
-  const canvas = document.getElementById("snapshot");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext("2d").drawImage(video, 0, 0);
+  // ✅ 截取图像
+  canvas.width = camera.videoWidth;
+  canvas.height = camera.videoHeight;
+  canvas.getContext("2d").drawImage(camera, 0, 0);
   const imageBase64 = canvas.toDataURL("image/jpeg");
 
-  // ✅ 显示图像预览
-  document.getElementById("preview").src = imageBase64;
-
-  const lang = document.getElementById("langSelect").value;
   recognition = new webkitSpeechRecognition();
-  recognition.lang = lang;
+  recognition.lang = langSelect.value;
   recognition.interimResults = false;
   recognition.continuous = false;
 
-  let hasResult = false;
-
   recognition.onresult = async (event) => {
-    hasResult = true;
     const text = event.results[0][0].transcript;
-    document.getElementById("speechText").innerText = "You said: " + text;
+    speechText.innerText = "You said: " + text;
     isListening = false;
-    button.innerText = "⏳ Waiting...";
+    askBtn.innerHTML = `<div class='loader'></div>`; // ✅ 显示加载动画
     await sendToFastGPT(imageBase64, text);
   };
 
   recognition.onerror = () => {
-    isListening = false;
-    button.innerText = "🎤 Ask GPT";
+    stopListening();
+    speechText.innerText = "(Speech error)";
   };
 
   recognition.onend = () => {
-    if (!hasResult) {
-      button.innerText = "🎤 Ask GPT";
-      document.getElementById("speechText").innerText = "(No speech detected)";
+    if (isListening) {
+      stopListening();
+      speechText.innerText = "(No speech detected)";
     }
-    isListening = false;
   };
 
   recognition.start();
-
   setTimeout(() => {
-    if (!hasResult && isListening) {
+    if (isListening) {
+      recognition.abort();
       stopListening();
-      document.getElementById("speechText").innerText = "(No speech detected)";
+      speechText.innerText = "(Timeout: No speech)";
     }
   }, 5000);
 }
@@ -102,13 +107,14 @@ function stopListening() {
     recognition = null;
   }
   isListening = false;
-  document.getElementById("askBtn").innerText = "🎤 Ask GPT";
+  if (!isSpeaking) askBtn.innerText = "🎤 Hold to Speak";
 }
 
 function stopSpeaking() {
   speechSynthesis.cancel();
   isSpeaking = false;
-  document.getElementById("askBtn").innerText = "🎤 Ask GPT";
+  askBtn.innerText = "🎤 Hold to Speak";
+  startListening();
 }
 
 async function sendToFastGPT(imageBase64, text) {
@@ -120,27 +126,40 @@ async function sendToFastGPT(imageBase64, text) {
 
   const result = await response.json();
   const reply = result.reply;
-  document.getElementById("result").innerText = reply;
+  resultText.innerText = reply;
 
-  const button = document.getElementById("askBtn");
-  button.innerText = "🔊 Speaking...";
   isSpeaking = true;
-
+  askBtn.innerText = "🔊 Speaking...";
   synthUtterance = new SpeechSynthesisUtterance(reply);
   synthUtterance.lang = detectLanguage(reply);
   synthUtterance.onend = () => {
     isSpeaking = false;
-    button.innerText = "🎤 Ask GPT";
+    askBtn.innerText = "🎤 Hold to Speak";
   };
   speechSynthesis.speak(synthUtterance);
 }
 
 function detectLanguage(text) {
-  if (/[\u3040-\u30ff]/.test(text)) {
-    return 'ja-JP'; // Japanese
-  } else if (/[\u4e00-\u9fff]/.test(text)) {
-    return 'zh-CN'; // Chinese
-  } else {
-    return 'en-US'; // English
-  }
+  if (/[぀-ヿ]/.test(text)) return 'ja-JP';
+  if (/[一-鿿]/.test(text)) return 'zh-CN';
+  return 'en-US';
 }
+
+// ✅ 添加加载动画样式
+const style = document.createElement("style");
+style.innerHTML = `
+  .loader {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #007bff;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+document.head.appendChild(style);
