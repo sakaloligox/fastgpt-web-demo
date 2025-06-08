@@ -3,34 +3,117 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>FastGPT Multimodal Interface</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 10px;
+      background: #f9f9f9;
+      text-align: center;
+    }
+    video {
+      width: 90%;
+      max-width: 400px;
+      border-radius: 8px;
+      margin: 10px 0;
+    }
+    #speechText, #result {
+      border: 1px solid #ccc;
+      padding: 8px;
+      width: 90%;
+      max-width: 400px;
+      min-height: 40px;
+      margin: 8px auto;
+      background: white;
+      border-radius: 6px;
+      text-align: left;
+      white-space: pre-wrap;
+    }
+    #langSelect {
+      margin-top: 10px;
+      font-size: 16px;
+    }
+    #askBtn {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 20px;
+      padding: 14px 26px;
+      border: none;
+      border-radius: 50px;
+      background-color: #007bff;
+      color: white;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    #askBtn:active {
+      background-color: #0056b3;
+    }
+    #askBtn.loading::after {
+      content: '';
+      display: inline-block;
+      margin-left: 10px;
+      width: 16px;
+      height: 16px;
+      border: 3px solid white;
+      border-top: 3px solid transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg);}
+      100% { transform: rotate(360deg);}
+    }
+
+    /* ✅ 添加音量条样式 */
+    #volumeBarContainer {
+      width: 90%;
+      max-width: 400px;
+      height: 10px;
+      background-color: #ddd;
+      border-radius: 5px;
+      margin: 10px auto;
+      overflow: hidden;
+      display: none; /* 初始隐藏，语音识别时显示 */
+    }
+
+    #volumeBar {
+      height: 100%;
+      width: 0%;
+      background-color: #28a745;
+      transition: width 0.1s ease;
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <h2>Camera View</h2>
-    <video id="camera" autoplay playsinline muted></video>
-    <canvas id="snapshot" style="display:none;"></canvas>
 
-    <button onclick="startNewChat()">🧹 New Chat</button>
+  <h2>Camera View</h2>
+  <video id="camera" autoplay playsinline muted></video>
+  <canvas id="snapshot" style="display:none;"></canvas>
 
-    <!-- 🌐 语言选择：用于语音识别 -->
-    <select id="langSelect">
-      <option value="en-US" selected>English</option>
-      <option value="zh-CN">中文</option>
-      <option value="ja-JP">日本語</option>
-    </select>
+  <select id="langSelect">
+    <option value="en-US" selected>English</option>
+    <option value="zh-CN">中文</option>
+    <option value="ja-JP">日本語</option>
+  </select>
 
-    <h3>Speech Recognition Text</h3>
-    <p id="speechText" class="textbox"></p>
+  <h3>Speech Recognition Text</h3>
+  <p id="speechText"></p>
 
-    <h3>GPT Reply</h3>
-    <div id="result" class="textbox"></div>
-
-    <div class="button-container">
-      <button id="askBtn" class="mic-button">🎤 Hold to Speak</button>
-    </div>
+  <!-- ✅ 音量条容器 -->
+  <div id="volumeBarContainer">
+    <div id="volumeBar"></div>
   </div>
+
+  <h3>GPT Reply</h3>
+  <div id="result"></div>
+
+  <button id="askBtn">🎤 Hold to Speak</button>
 
   <script src="/static/script.js"></script>
 </body>

@@ -2,14 +2,11 @@ let recognition = null;
 let isListening = false;
 let isSpeaking = false;
 let synthUtterance = null;
-let chatHistory = [];
-let voiceUnlocked = false;
 
-let chatId = localStorage.getItem("chatId");
-if (!chatId) {
-  chatId = crypto.randomUUID();
-  localStorage.setItem("chatId", chatId);
-}
+let smoothedVolume = 0;
+const smoothingFactor = 0.8; // 越接近 1 越平滑，推荐 0.8~0.95
+
+let audioContext, analyser, microphone, javascriptNode;
 
 const camera = document.getElementById("camera");
 const askBtn = document.getElementById("askBtn");
@@ -18,13 +15,19 @@ const resultText = document.getElementById("result");
 const langSelect = document.getElementById("langSelect");
 const canvas = document.getElementById("snapshot");
 
-// 🧠 强制激活扬声器（防止 iOS 走听筒）
-const audioTest = document.createElement("audio");
-audioTest.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=";
-audioTest.play().catch(() => {});
+// 创建音量条元素
+const volumeBar = document.createElement("div");
+volumeBar.id = "volumeBar";
+volumeBar.style.width = "0%";
+volumeBar.style.height = "10px";
+volumeBar.style.backgroundColor = "#4caf50";
+volumeBar.style.margin = "10px auto";
+volumeBar.style.transition = "width 0.1s ease";
+volumeBar.style.maxWidth = "400px";
+document.body.insertBefore(volumeBar, askBtn);
 
-let currentImageBase64 = "";
 
+// 摄像头与麦克风权限
 navigator.mediaDevices.getUserMedia({
   video: { facingMode: { exact: "environment" } },
   audio: {
@@ -34,8 +37,10 @@ navigator.mediaDevices.getUserMedia({
   }
 })
 .then(stream => {
-  camera.srcObject = stream;
-  camera.muted = true;
+  const video = document.getElementById("camera");
+  video.srcObject = stream;
+  video.muted = true;
+  initAudioLevel(stream); // ✅ 初始化音量检测
 })
 .catch(() => {
   return navigator.mediaDevices.getUserMedia({
@@ -44,9 +49,47 @@ navigator.mediaDevices.getUserMedia({
   });
 })
 .then(stream => {
-  if (stream) camera.srcObject = stream;
+  if (stream) {
+    camera.srcObject = stream;
+    initAudioLevel(stream); // ✅ 再次初始化音量检测
+  }
 })
 .catch(err => alert("Failed to access camera/mic: " + err));
+
+function initAudioLevel(stream) {
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioContext.createAnalyser();
+  microphone = audioContext.createMediaStreamSource(stream);
+  javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+
+  analyser.smoothingTimeConstant = 0.8;
+  analyser.fftSize = 1024;
+
+  microphone.connect(analyser);
+  analyser.connect(javascriptNode);
+  javascriptNode.connect(audioContext.destination);
+
+  javascriptNode.onaudioprocess = function () {
+    let array = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(array);
+    let values = 0;
+
+    for (let i = 0; i < array.length; i++) {
+      values += array[i];
+    }
+
+    let average = values / array.length;
+
+    // 平滑处理音量值
+    smoothedVolume = smoothingFactor * smoothedVolume + (1 - smoothingFactor) * average;
+
+    // 设置最小阈值，避免噪音误报
+    const threshold = 5;
+    let volumePercent = smoothedVolume < threshold ? 0 : Math.min(100, smoothedVolume * 1.5);
+
+    volumeBar.style.width = volumePercent + "%";
+  };
+}
 
 askBtn.addEventListener("mousedown", handleButtonPress);
 askBtn.addEventListener("mouseup", handleButtonRelease);
@@ -54,13 +97,6 @@ askBtn.addEventListener("touchstart", e => { e.preventDefault(); handleButtonPre
 askBtn.addEventListener("touchend", handleButtonRelease);
 
 function handleButtonPress() {
-  if (!voiceUnlocked) {
-    if (speechSynthesis.paused) speechSynthesis.resume();
-    const testVoice = new SpeechSynthesisUtterance('');
-    speechSynthesis.speak(testVoice);
-    voiceUnlocked = true;
-  }
-
   if (isSpeaking) {
     stopSpeaking();
   } else if (!isListening) {
@@ -69,8 +105,8 @@ function handleButtonPress() {
 }
 
 function handleButtonRelease() {
-  if (isListening && recognition) {
-    recognition.stop(); // 手动结束识别
+  if (isListening) {
+    stopListening();
   }
 }
 
@@ -83,7 +119,7 @@ function startListening() {
   canvas.width = 160;
   canvas.height = 120;
   canvas.getContext("2d").drawImage(camera, 0, 0, 160, 120);
-  currentImageBase64 = canvas.toDataURL("image/jpeg", 0.6);
+  const imageBase64 = canvas.toDataURL("image/jpeg", 0.6);
 
   recognition = new webkitSpeechRecognition();
   recognition.lang = langSelect.value;
@@ -91,36 +127,34 @@ function startListening() {
   recognition.continuous = false;
 
   recognition.onresult = async (event) => {
-    const result = event.results[event.resultIndex];
-    if (result && result[0]) {
-      const rawText = result[0].transcript.trim();
-      const cleanText = removeRepeatingPhrases(rawText);
-      if (!cleanText) {
-        speechText.innerText = "(No speech detected)";
-        stopListening();
-        return;
-      }
-
-      speechText.innerText = "You said: " + cleanText;
-      askBtn.classList.add("loading");
-      stopListening();
-      await sendToFastGPT(currentImageBase64, cleanText);
-    }
+    const text = event.results[0][0].transcript;
+    speechText.innerText = "You said: " + text;
+    isListening = false;
+    askBtn.innerHTML = `<div class='loader'></div>`;
+    await sendToFastGPT(imageBase64, text);
   };
 
   recognition.onerror = () => {
-    speechText.innerText = "(Speech error)";
     stopListening();
+    speechText.innerText = "(Speech error)";
   };
 
   recognition.onend = () => {
-    // 👈 关键：确保 stopListening 被执行
-    stopListening();
+    if (isListening) {
+      stopListening();
+      speechText.innerText = "(No speech detected)";
+    }
   };
 
   recognition.start();
+  setTimeout(() => {
+    if (isListening) {
+      recognition.abort();
+      stopListening();
+      speechText.innerText = "(Timeout: No speech)";
+    }
+  }, 5000);
 }
-
 
 function stopListening() {
   if (recognition) {
@@ -138,88 +172,65 @@ function stopSpeaking() {
   startListening();
 }
 
-function removeRepeatingPhrases(text) {
-  const words = text.split(/[\s，。！？、,.!?]/).filter(Boolean);
-  const deduped = [];
-  for (let i = 0; i < words.length; i++) {
-    if (i === 0 || words[i] !== words[i - 1]) {
-      deduped.push(words[i]);
-    }
-  }
-  return deduped.join(" ");
-}
-
 async function sendToFastGPT(imageBase64, text) {
-  const currentMessage = [{
-    role: "user",
-    content: [
-      { type: "text", text: text },
-      { type: "image_url", image_url: { url: imageBase64 } }
-    ]
-  }];
-
-  // ✅ 设置按钮状态为加载中
-  askBtn.innerText = "⌛ Waiting...";
-  askBtn.classList.add("loading");
-
   const response = await fetch("/api", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: currentMessage,
-      chatId: chatId
-    })
+    body: JSON.stringify({ image: imageBase64, text: text })
   });
 
   const result = await response.json();
   const reply = result.reply;
-  chatId = result.chatId || chatId;
   resultText.innerText = reply;
 
-  chatHistory.push({
-    role: "user",
-    content: currentMessage[0].content
-  });
-
-  chatHistory.push({
-    role: "assistant",
-    content: [{ type: "text", text: reply }]
-  });
-
   isSpeaking = true;
-  askBtn.classList.remove("loading");
   askBtn.innerText = "🔊 Speaking...";
+const video = document.getElementById("camera"); // 重新获取 video DOM
 
-  synthUtterance = new SpeechSynthesisUtterance(reply);
-  synthUtterance.lang = detectLanguage(reply);
-  synthUtterance.volume = 1;
-  synthUtterance.rate = 1;
-  synthUtterance.pitch = 1;
-  synthUtterance.onend = () => {
-    isSpeaking = false;
-    askBtn.innerText = "🎤 Hold to Speak";
-  };
-  speechSynthesis.speak(synthUtterance);
+// 在语音播放前尝试暂停摄像头视频，提升外放概率
+video.muted = true;
+video.pause();  // 🔧 暂停摄像头画面，有助于释放音频焦点
+
+synthUtterance = new SpeechSynthesisUtterance(reply);
+synthUtterance.lang = detectLanguage(reply);
+synthUtterance.onend = () => {
+  isSpeaking = false;
+  askBtn.innerText = "🎤 Hold to Speak";
+
+  // 播放完语音后恢复摄像头
+  video.muted = true;
+  video.play();
+};
+
+speechSynthesis.speak(synthUtterance);
+
 }
 
-
 function detectLanguage(text) {
-  const hasJapanese = /[\u3040-\u30ff\u31f0-\u31ff\uFF66-\uFF9F]/.test(text);
-  const hasChinese = /[\u4e00-\u9fff]/.test(text);
-  if (hasJapanese) return 'ja-JP';
-  if (hasChinese) return 'zh-CN';
+  if (/[぀-ヿ]/.test(text)) return 'ja-JP';
+  if (/[一-鿿]/.test(text)) return 'zh-CN';
   return 'en-US';
 }
 
-function startNewChat() {
-  chatHistory = [];
-  resultText.innerText = '';
-  speechText.innerText = '';
-  chatId = crypto.randomUUID();
-  localStorage.setItem("chatId", chatId);
-}
+const style = document.createElement("style");
+style.innerHTML = `
+  .loader {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #007bff;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+document.head.appendChild(style);
 
-// iOS语音解锁
+// iOS 语音播放权限
 function unlockVoicePlayback() {
   const utter = new SpeechSynthesisUtterance('');
   window.speechSynthesis.speak(utter);
