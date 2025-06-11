@@ -53,6 +53,7 @@
     #askBtn:active {
       background-color: #0056b3;
     }
+      /* 加载动画样式 */
     #askBtn.loading::after {
       content: '';
       display: inline-block;
@@ -95,7 +96,7 @@
   <h2>Camera View</h2>
   <video id="camera" autoplay playsinline muted></video>
   <canvas id="snapshot" style="display:none;"></canvas>
-
+  <button onclick="startNewChat()">🧹 New Chat</button>
   <select id="langSelect">
     <option value="en-US" selected>English</option>
     <option value="zh-CN">中文</option>

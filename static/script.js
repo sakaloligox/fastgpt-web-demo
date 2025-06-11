@@ -2,6 +2,15 @@ let recognition = null;
 let isListening = false;
 let isSpeaking = false;
 let synthUtterance = null;
+let chatHistory = []; // 🧠 上下文缓存
+let voiceUnlocked = false;
+
+let chatId = localStorage.getItem("chatId");
+if (!chatId) {
+  chatId = crypto.randomUUID();  // ✅ 生成 UUID
+  localStorage.setItem("chatId", chatId);  // 保存在本地直到关闭标签页
+}
+
 
 let smoothedVolume = 0;
 const smoothingFactor = 0.8; // 越接近 1 越平滑，推荐 0.8~0.95
@@ -40,6 +49,8 @@ navigator.mediaDevices.getUserMedia({
   const video = document.getElementById("camera");
   video.srcObject = stream;
   video.muted = true;
+  camera.srcObject = stream;
+  camera.muted = true;
   initAudioLevel(stream); // ✅ 初始化音量检测
 })
 .catch(() => {
@@ -97,6 +108,15 @@ askBtn.addEventListener("touchstart", e => { e.preventDefault(); handleButtonPre
 askBtn.addEventListener("touchend", handleButtonRelease);
 
 function handleButtonPress() {
+  // ✅ iOS 语音播报权限解锁（只做一次）
+  if (!voiceUnlocked) {
+    if (speechSynthesis.paused) {
+      speechSynthesis.resume();
+    }
+    const testVoice = new SpeechSynthesisUtterance('');
+    speechSynthesis.speak(testVoice);
+    voiceUnlocked = true;
+  }
   if (isSpeaking) {
     stopSpeaking();
   } else if (!isListening) {
@@ -130,7 +150,8 @@ function startListening() {
     const text = event.results[0][0].transcript;
     speechText.innerText = "You said: " + text;
     isListening = false;
-    askBtn.innerHTML = `<div class='loader'></div>`;
+    askBtn.classList.add("loading");
+    // askBtn.innerHTML = `<div class='loader'></div>`;
     await sendToFastGPT(imageBase64, text);
   };
 
@@ -173,17 +194,44 @@ function stopSpeaking() {
 }
 
 async function sendToFastGPT(imageBase64, text) {
+  // ✅ 构建当前提问（不加入历史）
+  const currentMessage = [{
+    role: "user",
+    content: [
+      { type: "text", text: text },
+      { type: "image_url", image_url: { url: imageBase64 } }
+    ]
+  }];
   const response = await fetch("/api", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: imageBase64, text: text })
+        body: JSON.stringify({
+      messages: currentMessage,  // ✅ 只发送当前消息
+      chatId: chatId
+    })
   });
 
   const result = await response.json();
   const reply = result.reply;
+  chatId = result.chatId || chatId;
   resultText.innerText = reply;
 
+  // ✅ 仍然保存到 chatHistory，用于界面展示或未来切换功能
+  chatHistory.push({
+    role: "user",
+    content: [
+      { type: "text", text: text },
+      { type: "image_url", image_url: { url: imageBase64 } }
+    ]
+  });
+
+  chatHistory.push({
+    role: "assistant",
+    content: [{ type: "text", text: reply }]
+  });
+
   isSpeaking = true;
+  askBtn.classList.remove("loading");
   askBtn.innerText = "🔊 Speaking...";
 const video = document.getElementById("camera"); // 重新获取 video DOM
 
@@ -212,6 +260,18 @@ function detectLanguage(text) {
   return 'en-US';
 }
 
+function startNewChat() {
+  chatHistory = [];
+  resultText.innerText = '';
+  speechText.innerText = '';
+
+  // ❗️生成新的 chatId 并保存（使其成为新的对话线程）
+  chatId = crypto.randomUUID();
+  localStorage.setItem("chatId", chatId);
+}
+
+
+// iOS语音解锁
 const style = document.createElement("style");
 style.innerHTML = `
   .loader {
