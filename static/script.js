@@ -4,6 +4,8 @@ let isSpeaking = false;
 let synthUtterance = null;
 let chatHistory = []; // 🧠 上下文缓存
 let voiceUnlocked = false;
+let isCancelled = false; // ⛔️ 控制是否取消本次识别
+
 
 let chatId = localStorage.getItem("chatId");
 if (!chatId) {
@@ -99,13 +101,43 @@ function initAudioLevel(stream) {
     let volumePercent = smoothedVolume < threshold ? 0 : Math.min(100, smoothedVolume * 1.5);
 
     volumeBar.style.width = volumePercent + "%";
+    volumeBar.style.display = isListening ? "block" : "none";
   };
 }
 
-askBtn.addEventListener("mousedown", handleButtonPress);
-askBtn.addEventListener("mouseup", handleButtonRelease);
-askBtn.addEventListener("touchstart", e => { e.preventDefault(); handleButtonPress(); });
-askBtn.addEventListener("touchend", handleButtonRelease);
+askBtn.addEventListener("mousedown", () => {
+  isCancelled = false;
+  handleButtonPress();
+});
+askBtn.addEventListener("mouseup", () => {
+  if (!isCancelled) handleButtonRelease();
+});
+askBtn.addEventListener("mouseleave", () => {
+  if (isListening) {
+    isCancelled = true;
+    stopListening(true); // true 表示取消
+    askBtn.innerText = "❌ Cancelled";
+  }
+});
+
+askBtn.addEventListener("touchstart", e => {
+  e.preventDefault();
+  isCancelled = false;
+  handleButtonPress();
+});
+askBtn.addEventListener("touchmove", e => {
+  const touch = e.touches[0];
+  const target = document.elementFromPoint(touch.clientX, touch.clientY);
+  if (target !== askBtn && isListening) {
+    isCancelled = true;
+    stopListening(true);
+    askBtn.innerText = "❌ Cancelled";
+  }
+});
+askBtn.addEventListener("touchend", () => {
+  if (!isCancelled) handleButtonRelease();
+});
+
 
 function handleButtonPress() {
   // ✅ iOS 语音播报权限解锁（只做一次）
@@ -117,11 +149,14 @@ function handleButtonPress() {
     speechSynthesis.speak(testVoice);
     voiceUnlocked = true;
   }
-  if (isSpeaking) {
+  if (isSpeaking || isListening) {
     stopSpeaking();
-  } else if (!isListening) {
+    stopListening(true); // 取消语音识别
+    askBtn.innerText = "🎤 Hold to Speak";
+  } else {
     startListening();
   }
+
 }
 
 function handleButtonRelease() {
@@ -146,14 +181,14 @@ function startListening() {
   recognition.interimResults = false;
   recognition.continuous = false;
 
-  recognition.onresult = async (event) => {
-    const text = event.results[0][0].transcript;
-    speechText.innerText = "You said: " + text;
-    isListening = false;
-    askBtn.classList.add("loading");
-    // askBtn.innerHTML = `<div class='loader'></div>`;
-    await sendToFastGPT(imageBase64, text);
-  };
+recognition.onresult = async (event) => {
+  if (isCancelled) return; // ✅ 如果已取消，不处理
+  const text = event.results[0][0].transcript;
+  speechText.innerText = "You said: " + text;
+  isListening = false;
+  askBtn.classList.add("loading");
+  await sendToFastGPT(imageBase64, text);
+};
 
   recognition.onerror = () => {
     stopListening();
@@ -177,14 +212,22 @@ function startListening() {
   }, 5000);
 }
 
-function stopListening() {
+function stopListening(cancelled = false) {
   if (recognition) {
     recognition.abort();
     recognition = null;
   }
   isListening = false;
-  if (!isSpeaking) askBtn.innerText = "🎤 Hold to Speak";
+
+  if (cancelled) {
+    speechText.innerText = "(Cancelled)";
+  }
+
+  if (!isSpeaking && !cancelled) {
+    askBtn.innerText = "🎤 Hold to Speak";
+  }
 }
+
 
 function stopSpeaking() {
   speechSynthesis.cancel();
